@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OneBoard</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">OneBoard <span>вакансии + адаптация CV</span></div>
+  <nav>
+    <button class="tab active" data-tab="vacancies">Вакансии</button>
+    <button class="tab" data-tab="cvs">Мои CV</button>
+    <button class="tab" data-tab="adapt">Адаптация</button>
+  </nav>
+</header>
+
+<main>
+  <!-- ============ VACANCIES ============ -->
+  <section id="tab-vacancies" class="tab-panel active">
+    <div class="toolbar">
+      <input id="v-query" type="search" placeholder="Поиск: java, react, data…">
+      <select id="v-source"><option value="">Все источники</option></select>
+      <label class="check"><input id="v-remote" type="checkbox"> Только remote</label>
+      <button id="v-search">Найти</button>
+      <span class="spacer"></span>
+      <button id="v-refresh" class="secondary" title="Загрузить свежие вакансии с job-бордов по запросу">Обновить из источников</button>
+      <button id="v-add" class="secondary">+ Добавить вручную</button>
+    </div>
+    <div id="v-status" class="status"></div>
+    <div class="split">
+      <div>
+        <ul id="v-list" class="list"></ul>
+        <div class="pager"><button id="v-prev">←</button><span id="v-page"></span><button id="v-next">→</button></div>
+      </div>
+      <article id="v-detail" class="detail empty">Выберите вакансию слева</article>
+    </div>
+  </section>
+
+  <!-- ============ CVs ============ -->
+  <section id="tab-cvs" class="tab-panel">
+    <div class="split">
+      <div>
+        <div class="toolbar">
+          <button id="cv-new">+ Новое CV</button>
+          <label class="button secondary">Загрузить файл<input id="cv-file" type="file" accept=".pdf,.txt,.md" hidden></label>
+        </div>
+        <ul id="cv-list" class="list"></ul>
+      </div>
+      <form id="cv-form" class="detail">
+        <input type="hidden" id="cv-id">
+        <label>Название<input id="cv-title" required maxlength="255" placeholder="Например: Java Backend — EN"></label>
+        <label>Текст CV (Markdown или обычный текст)<textarea id="cv-content" rows="22" required></textarea></label>
+        <div class="row">
+          <button type="submit">Сохранить</button>
+          <button type="button" id="cv-delete" class="danger">Удалить</button>
+          <span class="spacer"></span>
+          <button type="button" id="cv-matches" class="secondary">Подходящие вакансии</button>
+        </div>
+        <div id="cv-match-list"></div>
+      </form>
+    </div>
+  </section>
+
+  <!-- ============ ADAPT ============ -->
+  <section id="tab-adapt" class="tab-panel">
+    <div class="toolbar">
+      <label>CV <select id="a-cv"></select></label>
+      <label>Вакансия ID <input id="a-vacancy" type="number" min="1" style="width:7em"></label>
+      <span id="a-vacancy-title" class="muted"></span>
+      <label>Метод <select id="a-method"><option value="auto">auto</option></select></label>
+      <button id="a-run">Адаптировать</button>
+    </div>
+    <div id="a-status" class="status"></div>
+    <div class="split">
+      <div>
+        <h3>История</h3>
+        <ul id="a-history" class="list"></ul>
+      </div>
+      <article id="a-result" class="detail empty">Выберите CV и вакансию, затем нажмите «Адаптировать»</article>
+    </div>
+  </section>
+</main>
+
+<dialog id="add-dialog">
+  <form id="add-form" method="dialog">
+    <h3>Новая вакансия</h3>
+    <label>Должность<input name="title" required></label>
+    <label>Компания<input name="company"></label>
+    <label>Локация<input name="location"></label>
+    <label class="check"><input name="remote" type="checkbox"> Remote</label>
+    <label>Зарплата<input name="salary"></label>
+    <label>Ссылка<input name="url" type="url"></label>
+    <label>Теги (через запятую)<input name="tags"></label>
+    <label>Описание<textarea name="description" rows="10" required></textarea></label>
+    <div class="row">
+      <button type="submit" value="ok">Сохранить</button>
+      <button type="button" class="secondary" id="add-cancel">Отмена</button>
+    </div>
+  </form>
+</dialog>
+
+<script src="app.js"></script>
+</body>
+</html>
