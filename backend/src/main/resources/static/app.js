@@ -74,9 +74,12 @@ async function searchVacancies(page = 0) {
         <div class="meta">${esc(v.company || '—')} · ${esc(v.location || '')} ${v.remote ? '· remote' : ''}</div>
         <div class="meta">${esc(v.source)} · ${fmtDate(v.publishedAt)} ${v.salary ? '· ' + esc(v.salary) : ''}</div>
       </li>`).join('') || '<li class="muted">Ничего не найдено. Нажмите «Обновить из источников», чтобы загрузить вакансии.</li>';
-    if (!data.items.length) setStatus($('#v-status'), '');
+    return true;
   } catch (e) {
-    setStatus($('#v-status'), e.message, true);
+    $('#v-list').innerHTML = `<li class="muted">Не удалось загрузить вакансии: ${esc(e.message)}
+      <div style="margin-top:6px"><button class="secondary" id="v-retry">Повторить</button></div></li>`;
+    $('#v-retry').onclick = () => searchVacancies(page);
+    return false;
   }
 }
 
@@ -105,7 +108,7 @@ async function showVacancy(id) {
     <div class="muted">ID ${v.id} · источник ${esc(v.source)} · опубликовано ${fmtDate(v.publishedAt)}</div>
     <hr>
     <div class="desc">${esc(v.description)}</div>`;
-  $('#v-adapt').onclick = () => { $('#a-vacancy').value = v.id; showTab('adapt'); };
+  $('#v-adapt').onclick = () => openAdapt({ vacancyId: v.id });
   const del = $('#v-delete');
   if (del) del.onclick = async () => {
     if (!confirm('Удалить вакансию?')) return;
@@ -161,6 +164,7 @@ $('#add-form').addEventListener('submit', async (e) => {
 
 // ---------- CVs ----------
 let cvCache = [];
+let cvCreating = false; // user clicked "New CV": don't auto-select an existing one
 
 async function loadCvs(selectId) {
   cvCache = await api('/cvs');
@@ -169,12 +173,13 @@ async function loadCvs(selectId) {
       <div class="title">${esc(c.title)}</div>
       <div class="meta">обновлено ${fmtDate(c.updatedAt)} · ${c.content.length} символов</div>
     </li>`).join('') || '<li class="muted">Пока нет CV — создайте новое или загрузите файл (.pdf/.txt/.md)</li>';
-  const id = selectId ?? Number($('#cv-id').value) ?? null;
-  const cv = cvCache.find((c) => c.id === id);
-  if (cv) editCv(cv); else if (!$('#cv-id').value) newCv();
+  const id = selectId ?? Number($('#cv-id').value);
+  const cv = cvCache.find((c) => c.id === id) ?? (cvCreating ? null : cvCache[0]);
+  if (cv) editCv(cv); else newCv();
 }
 
 function newCv() {
+  cvCreating = true;
   $('#cv-id').value = '';
   $('#cv-title').value = '';
   $('#cv-content').value = '';
@@ -185,6 +190,7 @@ function newCv() {
 }
 
 function editCv(cv) {
+  cvCreating = false;
   $('#cv-id').value = cv.id;
   $('#cv-title').value = cv.title;
   $('#cv-content').value = cv.content;
@@ -214,7 +220,8 @@ $('#cv-delete').onclick = async () => {
   const id = $('#cv-id').value;
   if (!id || !confirm('Удалить это CV?')) return;
   await api('/cvs/' + id, { method: 'DELETE' });
-  newCv();
+  $('#cv-id').value = '';
+  cvCreating = false;
   loadCvs();
 };
 
@@ -241,21 +248,29 @@ $('#cv-matches').onclick = (e) => busy(e.target, async () => {
           <div class="chips">${r.matched.map((s) => `<span class="chip ok">${esc(s)}</span>`).join('')}${r.missing.map((s) => `<span class="chip miss">${esc(s)}</span>`).join('')}</div>
         </li>`).join('')}</ul>`
     : '<p class="muted">Нет вакансий с совпадениями. Загрузите вакансии на вкладке «Вакансии».</p>');
-  $('#cv-match-list').querySelectorAll('li[data-vid]').forEach((li) => li.onclick = () => {
-    $('#a-vacancy').value = li.dataset.vid;
-    showTab('adapt');
-    $('#a-cv').value = id;
-  });
+  $('#cv-match-list').querySelectorAll('li[data-vid]').forEach((li) => li.onclick = () =>
+    openAdapt({ cvId: Number(id), vacancyId: Number(li.dataset.vid) }));
 });
 
 // ---------- adaptation ----------
 let methodsLoaded = false;
+let pendingAdapt = null; // {cvId?, vacancyId?} to preselect when the tab opens
+
+/** Switch to the Adapt tab with a CV and/or vacancy preselected. */
+function openAdapt(selection) {
+  pendingAdapt = selection;
+  showTab('adapt');
+}
 
 async function loadAdaptTab() {
-  const current = $('#a-cv').value;
+  const pending = pendingAdapt;
+  pendingAdapt = null;
+  const current = pending?.cvId ? String(pending.cvId) : $('#a-cv').value;
   const cvs = await api('/cvs');
-  $('#a-cv').innerHTML = cvs.map((c) => `<option value="${c.id}">${esc(c.title)}</option>`).join('');
+  $('#a-cv').innerHTML = cvs.map((c) => `<option value="${c.id}">${esc(c.title)}</option>`).join('')
+    || '<option value="">— нет CV —</option>';
   if (current && cvs.some((c) => String(c.id) === current)) $('#a-cv').value = current;
+  if (pending?.vacancyId) await selectAdaptVacancy(pending.vacancyId);
   if (!methodsLoaded) {
     const methods = await api('/adaptations/methods');
     for (const m of methods) {
@@ -264,19 +279,104 @@ async function loadAdaptTab() {
     }
     methodsLoaded = true;
   }
-  updateVacancyTitle();
   loadHistory();
 }
 
-async function updateVacancyTitle() {
-  const id = $('#a-vacancy').value;
-  if (!id) { $('#a-vacancy-title').textContent = ''; return; }
+// ----- vacancy picker -----
+const picker = { label: '', options: [], active: -1, timer: null, seq: 0 };
+const pickerInput = $('#a-vacancy-search');
+const pickerList = $('#a-vacancy-options');
+const vacancyLabel = (title, company) => (company ? `${title} — ${company}` : title);
+
+async function selectAdaptVacancy(id) {
   try {
     const v = await api('/vacancies/' + id);
-    $('#a-vacancy-title').textContent = `${v.title} — ${v.company || ''}`;
-  } catch { $('#a-vacancy-title').textContent = 'вакансия не найдена'; }
+    setPickerValue(v.id, vacancyLabel(v.title, v.company));
+  } catch {
+    setPickerValue('', '');
+  }
 }
-$('#a-vacancy').addEventListener('change', updateVacancyTitle);
+
+function setPickerValue(id, label) {
+  $('#a-vacancy').value = id;
+  picker.label = label;
+  pickerInput.value = label;
+  closePicker();
+}
+
+function closePicker() {
+  pickerList.hidden = true;
+  picker.active = -1;
+}
+
+async function refreshPicker() {
+  const q = pickerInput.value.trim();
+  const seq = ++picker.seq; // ignore out-of-order responses
+  let header;
+  let options;
+  try {
+    if (!q || q === picker.label) {
+      const cvId = $('#a-cv').value;
+      if (cvId) {
+        header = 'Лучше всего подходят к выбранному CV';
+        options = (await api(`/cvs/${cvId}/matches?limit=10`))
+          .map((r) => ({ id: r.vacancyId, title: r.title, company: r.company, score: r.score }));
+      } else {
+        header = 'Последние вакансии';
+        options = (await api('/vacancies?size=10')).items;
+      }
+    } else {
+      header = 'Результаты поиска';
+      options = (await api('/vacancies?size=10&q=' + encodeURIComponent(q))).items;
+    }
+  } catch (e) {
+    header = 'Ошибка: ' + e.message;
+    options = [];
+  }
+  if (seq !== picker.seq) return;
+  picker.options = options;
+  picker.active = -1;
+  pickerList.innerHTML = `<li class="header">${esc(header)}</li>` + (options.map((o, i) => `
+    <li data-i="${i}">
+      ${o.score !== undefined ? `<span class="score ${scoreClass(o.score)}">${o.score}%</span>` : ''}
+      <span class="grow">${esc(o.title)} <span class="muted">${esc(o.company || '')}</span></span>
+    </li>`).join('') || '<li class="header">Ничего не найдено</li>');
+  pickerList.hidden = false;
+}
+
+function highlightPicker(i) {
+  const items = pickerList.querySelectorAll('li[data-i]');
+  if (!items.length) return;
+  picker.active = (i + items.length) % items.length;
+  items.forEach((li, j) => li.classList.toggle('active', j === picker.active));
+  items[picker.active].scrollIntoView({ block: 'nearest' });
+}
+
+function choosePicker(i) {
+  const o = picker.options[i];
+  if (o) setPickerValue(o.id, vacancyLabel(o.title, o.company));
+}
+
+pickerInput.addEventListener('focus', () => { pickerInput.select(); refreshPicker(); });
+pickerInput.addEventListener('input', () => {
+  clearTimeout(picker.timer);
+  picker.timer = setTimeout(refreshPicker, 250);
+});
+pickerInput.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowDown') { e.preventDefault(); if (pickerList.hidden) refreshPicker(); else highlightPicker(picker.active + 1); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); highlightPicker(picker.active - 1); }
+  else if (e.key === 'Enter' && !pickerList.hidden && picker.active >= 0) { e.preventDefault(); choosePicker(picker.active); }
+  else if (e.key === 'Escape') { closePicker(); pickerInput.value = picker.label; }
+});
+// mousedown fires before the input's blur, so the click still lands
+pickerList.addEventListener('mousedown', (e) => {
+  const li = e.target.closest('li[data-i]');
+  if (li) { e.preventDefault(); choosePicker(Number(li.dataset.i)); }
+});
+pickerInput.addEventListener('blur', () => {
+  closePicker();
+  pickerInput.value = picker.label; // discard half-typed text: the selection didn't change
+});
 
 async function loadHistory() {
   const items = await api('/adaptations');
@@ -296,7 +396,7 @@ $('#a-history').addEventListener('click', async (e) => {
 $('#a-run').onclick = (e) => busy(e.target, async () => {
   const cvId = Number($('#a-cv').value);
   const vacancyId = Number($('#a-vacancy').value);
-  if (!cvId || !vacancyId) { setStatus($('#a-status'), 'Выберите CV и укажите ID вакансии', true); return; }
+  if (!cvId || !vacancyId) { setStatus($('#a-status'), 'Выберите CV и вакансию', true); return; }
   setStatus($('#a-status'), 'Адаптирую… (с Claude это может занять до минуты)');
   try {
     const a = await api('/adaptations', { method: 'POST', json: { cvId, vacancyId, method: $('#a-method').value } });
@@ -340,5 +440,26 @@ function renderAdaptation(a) {
 }
 
 // ---------- init ----------
-loadSources().catch((e) => setStatus($('#v-status'), e.message, true));
-searchVacancies(0);
+// The backend may still be starting when the page opens: wait for it instead of showing an empty page.
+async function waitForServer(maxAttempts = 30) {
+  for (let i = 0; i < maxAttempts; i++) {
+    try {
+      await api('/aggregation/sources');
+      return true;
+    } catch {
+      setStatus($('#v-status'), 'Сервер запускается, подождите…');
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+  }
+  return false;
+}
+
+(async () => {
+  if (!(await waitForServer())) {
+    setStatus($('#v-status'), 'Сервер не отвечает. Проверьте, что backend запущен, и обновите страницу.', true);
+    return;
+  }
+  setStatus($('#v-status'), '');
+  await loadSources().catch((e) => setStatus($('#v-status'), e.message, true));
+  await searchVacancies(0);
+})();

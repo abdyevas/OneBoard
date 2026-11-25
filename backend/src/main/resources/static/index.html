@@ -67,8 +67,12 @@
   <section id="tab-adapt" class="tab-panel">
     <div class="toolbar">
       <label>CV <select id="a-cv"></select></label>
-      <label>Вакансия ID <input id="a-vacancy" type="number" min="1" style="width:7em"></label>
-      <span id="a-vacancy-title" class="muted"></span>
+      <input type="hidden" id="a-vacancy">
+      <div class="picker">
+        <input id="a-vacancy-search" type="search" autocomplete="off"
+               placeholder="Вакансия: начните вводить название или компанию…">
+        <ul id="a-vacancy-options" class="picker-options" hidden></ul>
+      </div>
       <label>Метод <select id="a-method"><option value="auto">auto</option></select></label>
       <button id="a-run">Адаптировать</button>
     </div>

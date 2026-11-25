@@ -74,3 +74,12 @@ dialog::backdrop { background: rgba(0,0,0,.4); }
 dialog label input, dialog label textarea { width: 100%; }
 dialog label.check input { width: auto; }
 h3 { margin: 0 0 10px; }
+.picker { position: relative; flex: 1 1 360px; min-width: 260px; max-width: 640px; }
+.picker input { width: 100%; }
+.picker-options { position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 5; list-style: none; margin: 0; padding: 4px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.18);
+  max-height: 360px; overflow: auto; }
+.picker-options li { padding: 6px 8px; border-radius: 6px; cursor: pointer; display: flex; gap: 8px; align-items: baseline; }
+.picker-options li.active, .picker-options li:hover { background: var(--chip); }
+.picker-options li .grow { flex: 1; min-width: 0; }
+.picker-options li.header { cursor: default; color: var(--muted); font-size: 12px; background: none; }
