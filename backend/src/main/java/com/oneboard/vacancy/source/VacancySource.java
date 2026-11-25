@@ -14,6 +14,11 @@ public interface VacancySource {
     /** Human-readable name for the UI. */
     String displayName();
 
+    /** False when the source needs configuration (e.g. an API key) that is missing; it is then skipped. */
+    default boolean enabled() {
+        return true;
+    }
+
     /**
      * Fetch current vacancies matching the query (null/blank = whatever the board returns by default).
      * Implementations should throw on transport errors; the aggregator isolates failures per source.

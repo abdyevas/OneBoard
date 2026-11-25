@@ -47,13 +47,56 @@ function showTab(name) {
 // ---------- vacancies ----------
 const vState = { page: 0, totalPages: 0, selected: null };
 
+let sourcesInfo = [];
+
 async function loadSources() {
-  const sources = await api('/aggregation/sources');
+  sourcesInfo = await api('/aggregation/sources');
   const sel = $('#v-source');
-  for (const s of [...sources, { id: 'manual', name: 'Добавлены вручную' }]) {
-    sel.insertAdjacentHTML('beforeend', `<option value="${esc(s.id)}">${esc(s.name)}</option>`);
+  for (const s of [...sourcesInfo, { id: 'manual', name: 'Добавлены вручную', enabled: true }]) {
+    sel.insertAdjacentHTML('beforeend',
+      `<option value="${esc(s.id)}">${esc(s.name)}${s.enabled ? '' : ' — нужен API-ключ'}</option>`);
   }
 }
+
+// Azerbaijani job boards we are NOT allowed to copy listings from (their terms forbid automated
+// collection or grant no license). We only send the user to the board's own search.
+// `search` = URL template with the query prefilled; null = the board can't be prefilled by URL,
+// so we open its list and copy the query to the clipboard.
+const AZ_BOARDS = [
+  { name: 'jobsearch.az', list: 'https://jobsearch.az/vacancies', search: null },
+  { name: 'boss.az', list: 'https://boss.az/search/vacancies', search: null },
+  { name: 'hellojob.az', list: 'https://www.hellojob.az/vakansiyalar', search: 'https://www.hellojob.az/vakansiyalar?q={q}' },
+  { name: 'Glorri', list: 'https://jobs.glorri.az/', search: 'https://jobs.glorri.az/?keyword={q}' },
+  { name: 'busy.az', list: 'https://busy.az/vacancies', search: null },
+  { name: 'smartjob.az', list: 'https://smartjob.az/vakansiyalar', search: 'https://smartjob.az/vakansiyalar?q={q}' },
+];
+
+function renderBoards() {
+  $('#v-boards').innerHTML = '<span class="label">Искать на сайтах:</span>' + AZ_BOARDS.map((b, i) =>
+    `<a href="${esc(b.list)}" target="_blank" rel="noopener" data-board="${i}"
+        title="${b.search ? 'Откроет поиск на сайте с вашим запросом' : 'Откроет список вакансий; запрос будет скопирован — вставьте его в поиск сайта'}">${esc(b.name)} ↗</a>`).join('');
+}
+
+$('#v-boards').addEventListener('click', async (e) => {
+  const a = e.target.closest('a[data-board]');
+  if (!a) return;
+  const board = AZ_BOARDS[Number(a.dataset.board)];
+  const q = $('#v-query').value.trim();
+  if (!q) return; // plain link to the list
+  if (board.search) {
+    a.href = board.search.replace('{q}', encodeURIComponent(q));
+    return; // let the browser follow the updated link
+  }
+  let copied = false;
+  try {
+    await navigator.clipboard.writeText(q);
+    copied = true;
+  } catch { /* clipboard may be blocked; the list still opens */ }
+  setStatus($('#v-status'), copied
+    ? `Запрос «${q}» скопирован — вставьте его в поиск на ${board.name} (Ctrl+V).`
+    : `${board.name} не принимает запрос в ссылке — введите «${q}» в поиск на сайте.`);
+});
+renderBoards();
 
 async function searchVacancies(page = 0) {
   const params = new URLSearchParams({ page, size: 20 });
@@ -131,6 +174,9 @@ $('#v-refresh').onclick = (e) => busy(e.target, async () => {
     const lines = report.results.map((r) => r.error
       ? `${r.source}: ошибка — ${r.error}`
       : `${r.source}: получено ${r.fetched}, новых ${r.created}, обновлено ${r.updated} (${(r.durationMs / 1000).toFixed(1)} c)`);
+    for (const s of sourcesInfo.filter((x) => !x.enabled)) {
+      lines.push(`${s.name}: не подключён — нужен API-ключ (см. README)`);
+    }
     setStatus($('#v-status'), lines.join('\n'), report.results.some((r) => r.error));
     searchVacancies(0);
   } catch (err) {

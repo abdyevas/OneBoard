@@ -33,14 +33,14 @@ public class AggregationService {
         this.props = props;
     }
 
-    public record SourceInfo(String id, String name) {}
+    public record SourceInfo(String id, String name, boolean enabled) {}
 
     public record SourceResult(String source, int fetched, int created, int updated, long durationMs, String error) {}
 
     public record RefreshReport(String query, Instant startedAt, List<SourceResult> results) {}
 
     public List<SourceInfo> sources() {
-        return sources.stream().map(s -> new SourceInfo(s.id(), s.displayName())).toList();
+        return sources.stream().map(s -> new SourceInfo(s.id(), s.displayName(), s.enabled())).toList();
     }
 
     /**
@@ -55,7 +55,15 @@ public class AggregationService {
             Instant started = Instant.now();
             List<SourceResult> results = new ArrayList<>();
             for (VacancySource source : sources) {
-                if (!sourceIds.isEmpty() && !sourceIds.contains(source.id())) continue;
+                boolean requested = sourceIds.contains(source.id());
+                if (!sourceIds.isEmpty() && !requested) continue;
+                if (!source.enabled()) {
+                    // silently skip unconfigured sources in "refresh all"; explain when asked for explicitly
+                    if (requested) {
+                        results.add(new SourceResult(source.id(), 0, 0, 0, 0, "not configured (API key missing)"));
+                    }
+                    continue;
+                }
                 results.add(refreshOne(source, query));
             }
             return new RefreshReport(query, started, results);
