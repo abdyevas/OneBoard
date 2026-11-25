@@ -13,7 +13,7 @@ cd backend
 .\mvnw.cmd spring-boot:run
 ```
 
-Откройте http://localhost:8080. Другой порт: `$env:PORT=8085; .\mvnw.cmd spring-boot:run`.
+Откройте http://localhost:8085. Другой порт: `$env:PORT=9000; .\mvnw.cmd spring-boot:run`.
 
 Включить адаптацию через Claude:
 
