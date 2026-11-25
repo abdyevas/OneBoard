@@ -4,8 +4,9 @@
     {
       "name": "oneboard",
       "runtimeExecutable": "cmd",
-      "runtimeArgs": ["/c", "cd backend && mvnw.cmd spring-boot:run"],
-      "port": 8085
+      "runtimeArgs": ["/c", "cd /d backend && .\\mvnw.cmd spring-boot:run"],
+      "port": 8085,
+      "autoPort": false
     }
   ]
 }
