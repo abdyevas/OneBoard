@@ -112,8 +112,8 @@ async function searchVacancies(page = 0) {
     $('#v-prev').disabled = data.page <= 0;
     $('#v-next').disabled = data.page + 1 >= data.totalPages;
     $('#v-list').innerHTML = data.items.map((v) => `
-      <li data-id="${v.id}" class="${v.id === vState.selected ? 'selected' : ''}">
-        <div class="title">${esc(v.title)}</div>
+      <li data-id="${v.id}" data-title="${esc(v.title)}" class="${v.id === vState.selected ? 'selected' : ''}">
+        <div class="title">${listTitle(v.title, v.applicationStatus)}</div>
         <div class="meta">${esc(v.company || '—')} · ${esc(v.location || '')} ${v.remote ? '· remote' : ''}</div>
         <div class="meta">${esc(v.source)} · ${fmtDate(v.publishedAt)} ${v.salary ? '· ' + esc(v.salary) : ''}</div>
       </li>`).join('') || '<li class="muted">Ничего не найдено. Нажмите «Обновить из источников», чтобы загрузить вакансии.</li>';
@@ -134,24 +134,78 @@ $('#v-list').addEventListener('click', (e) => {
 async function showVacancy(id) {
   vState.selected = id;
   document.querySelectorAll('#v-list li').forEach((li) => li.classList.toggle('selected', Number(li.dataset.id) === id));
-  const v = await api('/vacancies/' + id);
   const el = $('#v-detail');
+  let v;
+  try {
+    v = await api('/vacancies/' + id);
+  } catch (e) {
+    el.classList.remove('empty');
+    el.innerHTML = `<p class="muted">Не удалось открыть вакансию: ${esc(e.message)}</p>`;
+    return;
+  }
+  if (vState.selected !== id) return; // user already clicked another vacancy
   el.classList.remove('empty');
+  el.scrollTop = 0;
+  const sourceName = sourcesInfo.find((s) => s.id === v.source)?.name
+    || (v.source === 'manual' ? 'добавлена вручную' : v.source);
+  const info = [
+    ['Компания', v.company],
+    ['Локация', v.location],
+    ['Формат', v.remote ? 'Удалённо' : (v.location ? 'Офис / на месте' : null)],
+    ['Занятость', v.employmentType],
+    ['Зарплата', v.salary || 'не указана'],
+    ['Опубликовано', v.publishedAt ? `${fmtDate(v.publishedAt)} (${ago(v.publishedAt)})` : null],
+    ['Источник', sourceName],
+  ].filter(([, value]) => value);
+
   el.innerHTML = `
     <h2>${esc(v.title)}</h2>
-    <div class="muted">${esc(v.company || '')} · ${esc(v.location || '')} ${v.remote ? '· remote' : ''} ${v.employmentType ? '· ' + esc(v.employmentType) : ''}</div>
-    ${v.salary ? `<div><b>${esc(v.salary)}</b></div>` : ''}
-    <div class="chips">${v.tags.map((t) => `<span class="chip">${esc(t)}</span>`).join('')}</div>
-    <div class="row" style="margin:10px 0">
-      ${v.url ? `<a href="${esc(v.url)}" target="_blank" rel="noopener">Открыть оригинал ↗</a>` : ''}
+    ${v.company ? `<div class="company">${esc(v.company)}</div>` : ''}
+
+    <div class="apply-bar">
+      ${v.url
+        ? `<a id="v-apply" class="button apply" href="${esc(v.url)}" target="_blank" rel="noopener">Откликнуться на сайте ↗</a>`
+        : '<span class="muted">У вакансии нет ссылки для отклика — свяжитесь с работодателем напрямую.</span>'}
+      <button id="v-adapt" class="secondary">Адаптировать CV</button>
       <span class="spacer"></span>
-      <button id="v-adapt">Адаптировать CV под эту вакансию</button>
-      ${v.source === 'manual' ? '<button id="v-delete" class="danger">Удалить</button>' : ''}
+      <label class="status-select">Статус
+        <select id="v-app-status">
+          ${Object.entries(APP_STATUS).map(([k, label]) => `<option value="${k}">${label}</option>`).join('')}
+        </select>
+      </label>
     </div>
-    <div class="muted">ID ${v.id} · источник ${esc(v.source)} · опубликовано ${fmtDate(v.publishedAt)}</div>
-    <hr>
-    <div class="desc">${esc(v.description)}</div>`;
+    <div id="v-apply-confirm" class="notice" hidden>
+      Подали заявку на сайте?
+      <button id="v-apply-yes">Да, отметить</button>
+      <button id="v-apply-no" class="secondary">Нет</button>
+    </div>
+    <div id="v-app-info" class="muted small"></div>
+
+    <dl class="info-grid">${info.map(([k, val]) => `<dt>${k}</dt><dd>${esc(val)}</dd>`).join('')}</dl>
+
+    <section id="v-match" class="block"></section>
+    <section id="v-adaptations" class="block" hidden></section>
+
+    ${v.tags.length ? `<div class="chips">${v.tags.map((t) => `<span class="chip">${esc(t)}</span>`).join('')}</div>` : ''}
+
+    <h3 class="section-title">Описание вакансии</h3>
+    ${v.source === 'jooble' ? '<p class="muted small">Jooble передаёт только краткое описание — полный текст по кнопке «Откликнуться на сайте».</p>' : ''}
+    <div class="desc">${formatDescription(v.description)}</div>
+
+    <div class="detail-footer muted small">
+      ID ${v.id}${v.url ? ` · <a href="${esc(v.url)}" target="_blank" rel="noopener">${esc(hostOf(v.url))}</a>` : ''}
+      ${v.source === 'manual' ? ' · <button id="v-delete" class="link danger-text">Удалить вакансию</button>' : ''}
+    </div>`;
+
+  renderApplication(v.id, v.application);
   $('#v-adapt').onclick = () => openAdapt({ vacancyId: v.id });
+  $('#v-app-status').onchange = (e) => saveApplication(v.id, e.target.value);
+  const apply = $('#v-apply');
+  if (apply) apply.addEventListener('click', () => {
+    if (!$('#v-app-status').value) $('#v-apply-confirm').hidden = false; // ask once they come back
+  });
+  $('#v-apply-yes').onclick = () => saveApplication(v.id, 'APPLIED');
+  $('#v-apply-no').onclick = () => { $('#v-apply-confirm').hidden = true; };
   const del = $('#v-delete');
   if (del) del.onclick = async () => {
     if (!confirm('Удалить вакансию?')) return;
@@ -159,6 +213,143 @@ async function showVacancy(id) {
     el.classList.add('empty'); el.textContent = 'Удалено';
     searchVacancies(vState.page);
   };
+  loadVacancyMatch(v.id);
+  loadVacancyAdaptations(v.id);
+}
+
+const APP_STATUS = {
+  '': 'Не откликалась',
+  APPLIED: 'Заявка подана',
+  INTERVIEW: 'Собеседование',
+  OFFER: 'Оффер',
+  REJECTED: 'Отказ',
+};
+
+function ago(iso) {
+  const days = Math.floor((Date.now() - new Date(iso)) / 86_400_000);
+  if (days <= 0) return 'сегодня';
+  if (days === 1) return 'вчера';
+  return `${days} дн. назад`;
+}
+
+function hostOf(url) {
+  try { return new URL(url).host; } catch { return url; }
+}
+
+/** Plain-text description -> paragraphs and bullet lists (everything escaped). */
+function formatDescription(text) {
+  if (!text) return '<p class="muted">Описание отсутствует.</p>';
+  return text.split(/\n{2,}/).map((block) => {
+    const lines = block.split('\n').map((l) => l.trim()).filter(Boolean);
+    const bullet = /^([-•*·]|\d+[.)])\s+/;
+    if (lines.length && lines.every((l) => bullet.test(l))) {
+      return `<ul>${lines.map((l) => `<li>${esc(l.replace(bullet, ''))}</li>`).join('')}</ul>`;
+    }
+    return lines.map((l) => bullet.test(l)
+      ? `<ul><li>${esc(l.replace(bullet, ''))}</li></ul>`
+      : `<p>${esc(l)}</p>`).join('');
+  }).join('');
+}
+
+function renderApplication(vacancyId, app) {
+  $('#v-app-status').value = app?.status || '';
+  $('#v-app-status').classList.toggle('active', !!app);
+  $('#v-apply-confirm').hidden = true;
+  $('#v-app-info').textContent = app
+    ? `Отклик отмечен ${new Date(app.appliedAt).toLocaleDateString('ru-RU')}` +
+      (app.updatedAt !== app.appliedAt ? `, статус обновлён ${new Date(app.updatedAt).toLocaleDateString('ru-RU')}` : '')
+    : '';
+  // keep the list badge in sync without reloading the page
+  const li = document.querySelector(`#v-list li[data-id="${vacancyId}"]`);
+  if (li) li.querySelector('.title').innerHTML = listTitle(li.dataset.title, app?.status);
+}
+
+async function saveApplication(vacancyId, status) {
+  try {
+    const app = status
+      ? await api('/applications/' + vacancyId, { method: 'PUT', json: { status } })
+      : (await api('/applications/' + vacancyId, { method: 'DELETE' }), null);
+    if (vState.selected === vacancyId) renderApplication(vacancyId, app);
+  } catch (e) {
+    alert('Не удалось сохранить статус: ' + e.message);
+  }
+}
+
+function listTitle(title, status) {
+  return esc(title) + (status ? ` <span class="badge ${status.toLowerCase()}">${APP_STATUS[status]}</span>` : '');
+}
+
+// ----- match with the user's CV, shown inside the vacancy -----
+const PREFERRED_CV_KEY = 'oneboard.matchCv';
+
+async function loadVacancyMatch(vacancyId) {
+  const box = $('#v-match');
+  let cvs;
+  try { cvs = await api('/cvs'); } catch { box.hidden = true; return; }
+  if (vState.selected !== vacancyId) return;
+  if (!cvs.length) {
+    box.innerHTML = '<span class="muted small">Добавьте CV на вкладке «Мои CV», чтобы увидеть совпадение навыков.</span>';
+    return;
+  }
+  let preferred = null;
+  try { preferred = localStorage.getItem(PREFERRED_CV_KEY); } catch { /* storage may be blocked */ }
+  const cvId = cvs.some((c) => String(c.id) === preferred) ? preferred : String(cvs[0].id);
+  box.innerHTML = `
+    <div class="row">
+      <h3 class="section-title" style="margin:0;flex:1">Совпадение с CV</h3>
+      ${cvs.length > 1
+        ? `<select id="v-match-cv">${cvs.map((c) => `<option value="${c.id}">${esc(c.title)}</option>`).join('')}</select>`
+        : `<span class="muted small">${esc(cvs[0].title)}</span>`}
+    </div>
+    <div id="v-match-body" class="muted small">Считаю…</div>`;
+  const sel = $('#v-match-cv');
+  if (sel) {
+    sel.value = cvId;
+    sel.onchange = () => {
+      try { localStorage.setItem(PREFERRED_CV_KEY, sel.value); } catch { /* ignore */ }
+      renderMatch(vacancyId, sel.value);
+    };
+  }
+  renderMatch(vacancyId, cvId);
+}
+
+async function renderMatch(vacancyId, cvId) {
+  const body = $('#v-match-body');
+  try {
+    const m = await api(`/match?cvId=${cvId}&vacancyId=${vacancyId}`);
+    if (vState.selected !== vacancyId) return;
+    if (!m.vacancySkills.length) {
+      body.innerHTML = 'В описании не найдено известных навыков — сравните требования вручную.';
+      return;
+    }
+    body.classList.remove('muted', 'small');
+    body.innerHTML = `
+      <div><span class="score ${scoreClass(m.score)}">${m.score}%</span>
+        <span class="muted small">есть ${m.matched.length} из ${m.vacancySkills.length} навыков из вакансии</span></div>
+      <div class="chips">${m.matched.map((s) => `<span class="chip ok">✓ ${esc(s)}</span>`).join('')}${m.missing.map((s) => `<span class="chip miss">✗ ${esc(s)}</span>`).join('')}</div>`;
+  } catch (e) {
+    body.textContent = 'Не удалось посчитать совпадение: ' + e.message;
+  }
+}
+
+// ----- CVs already adapted for this vacancy: handy to attach when applying -----
+async function loadVacancyAdaptations(vacancyId) {
+  const box = $('#v-adaptations');
+  let items;
+  try { items = await api('/adaptations?vacancyId=' + vacancyId); } catch { return; }
+  if (vState.selected !== vacancyId || !items.length) return;
+  box.hidden = false;
+  box.innerHTML = `<h3 class="section-title">CV, адаптированные под эту вакансию</h3>
+    <ul class="plain">${items.map((a, i) => `
+      <li><span class="score ${scoreClass(a.matchScore)}">${a.matchScore}%</span>
+        ${esc(a.cvTitle)} <span class="muted small">· ${esc(a.method)} · ${new Date(a.createdAt).toLocaleDateString('ru-RU')}</span>
+        <button class="link" data-dl="${i}">Скачать .md</button>
+        <button class="link" data-open="${a.id}">Открыть</button></li>`).join('')}</ul>`;
+  box.querySelectorAll('[data-dl]').forEach((b) => b.onclick = () => downloadAdaptation(items[Number(b.dataset.dl)]));
+  box.querySelectorAll('[data-open]').forEach((b) => b.onclick = async () => {
+    showTab('adapt');
+    renderAdaptation(await api('/adaptations/' + b.dataset.open));
+  });
 }
 
 $('#v-search').onclick = () => searchVacancies(0);
@@ -468,21 +659,23 @@ function renderAdaptation(a) {
       <button class="danger" id="a-del">Удалить</button></div>
     <pre class="cv">${esc(a.content)}</pre>`;
   $('#a-copy').onclick = () => navigator.clipboard.writeText(a.content);
-  $('#a-download').onclick = () => {
-    const blob = new Blob([a.content], { type: 'text/markdown' });
-    const link = Object.assign(document.createElement('a'), {
-      href: URL.createObjectURL(blob),
-      download: `cv-${(a.company || 'company').replace(/[^\w-]+/g, '_')}-${a.vacancyId}.md`,
-    });
-    link.click();
-    URL.revokeObjectURL(link.href);
-  };
+  $('#a-download').onclick = () => downloadAdaptation(a);
   $('#a-del').onclick = async () => {
     if (!confirm('Удалить эту адаптацию?')) return;
     await api('/adaptations/' + a.id, { method: 'DELETE' });
     el.classList.add('empty'); el.textContent = 'Удалено';
     loadHistory();
   };
+}
+
+function downloadAdaptation(a) {
+  const blob = new Blob([a.content], { type: 'text/markdown' });
+  const link = Object.assign(document.createElement('a'), {
+    href: URL.createObjectURL(blob),
+    download: `cv-${(a.company || 'company').replace(/[^\w-]+/g, '_')}-${a.vacancyId}.md`,
+  });
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(link.href), 1000);
 }
 
 // ---------- init ----------

@@ -14,6 +14,8 @@ import org.springframework.context.annotation.Bean;
 
 import com.oneboard.adaptation.AdaptationService;
 import com.oneboard.aggregation.AggregationService;
+import com.oneboard.application.ApplicationStatus;
+import com.oneboard.application.JobApplicationService;
 import com.oneboard.cv.CvService;
 import com.oneboard.vacancy.VacancyDtos.CreateVacancyRequest;
 import com.oneboard.vacancy.VacancyService;
@@ -43,6 +45,7 @@ class OneboardApplicationTests {
     @Autowired VacancyService vacancies;
     @Autowired AdaptationService adaptations;
     @Autowired AggregationService aggregation;
+    @Autowired JobApplicationService applications;
 
     @Test
     void aggregationUpsertsWithoutDuplicates() {
@@ -71,6 +74,24 @@ class OneboardApplicationTests {
 
         var ranked = adaptations.rankVacancies(cv.getId(), null, 10);
         assertEquals(vacancy.getId(), ranked.getFirst().vacancyId());
+    }
+
+    @Test
+    void tracksApplicationStatusPerVacancy() {
+        var vacancy = vacancies.createManual(new CreateVacancyRequest("QA Engineer", "Acme", null, false, null,
+                "Testing", "https://example.com/apply", null));
+
+        var applied = applications.set(vacancy.getId(), ApplicationStatus.APPLIED, null);
+        var moved = applications.set(vacancy.getId(), ApplicationStatus.INTERVIEW, "call on Monday");
+
+        assertEquals(applied.getId(), moved.getId(), "one record per vacancy");
+        assertEquals(ApplicationStatus.INTERVIEW, applications.forVacancy(vacancy.getId()).orElseThrow().getStatus());
+        assertEquals(applied.getAppliedAt(), moved.getAppliedAt(), "applied date is kept on status change");
+
+        applications.remove(vacancy.getId());
+        assertTrue(applications.forVacancy(vacancy.getId()).isEmpty());
+        assertThrows(com.oneboard.common.NotFoundException.class,
+                () -> applications.set(999_999L, ApplicationStatus.APPLIED, null));
     }
 
     @Test

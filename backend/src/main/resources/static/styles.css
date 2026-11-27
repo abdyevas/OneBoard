@@ -74,6 +74,35 @@ dialog::backdrop { background: rgba(0,0,0,.4); }
 dialog label input, dialog label textarea { width: 100%; }
 dialog label.check input { width: auto; }
 h3 { margin: 0 0 10px; }
+/* vacancy details */
+.detail .company { font-size: 15px; font-weight: 600; color: var(--muted); margin-bottom: 12px; }
+.apply-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 10px 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+a.button { text-decoration: none; }
+.button.apply { background: var(--ok); border-color: var(--ok); color: #fff; font-weight: 600; padding: 8px 16px; }
+.button.apply:hover { filter: brightness(1.08); }
+.status-select { flex-direction: row; align-items: center; gap: 6px; margin: 0; }
+.status-select select.active { border-color: var(--ok); color: var(--ok); font-weight: 600; }
+.notice { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 8px; padding: 8px 12px; background: var(--chip); border-radius: 8px; }
+.notice[hidden] { display: none; }
+.small { font-size: 12px; }
+#v-app-info { margin-top: 6px; min-height: 1em; }
+.info-grid { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; margin: 14px 0; }
+.info-grid dt { color: var(--muted); }
+.info-grid dd { margin: 0; }
+.block { margin: 14px 0; padding: 12px; border: 1px solid var(--border); border-radius: 8px; }
+.block:empty { display: none; }
+.section-title { font-size: 14px; margin: 16px 0 8px; }
+.block .section-title { margin-top: 0; }
+.desc p { margin: 0 0 8px; white-space: pre-wrap; }
+.desc ul { margin: 0 0 8px; padding-left: 20px; }
+.detail-footer { margin-top: 16px; padding-top: 8px; border-top: 1px solid var(--border); }
+ul.plain { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+button.link { background: none; border: none; padding: 0 4px; color: var(--accent); cursor: pointer; }
+button.link.danger-text { color: var(--bad); }
+.badge { font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 8px; background: var(--chip); color: var(--ok); white-space: nowrap; }
+.badge.interview { color: var(--warn); }
+.badge.offer { color: var(--accent); }
+.badge.rejected { color: var(--bad); }
 .boards { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: -4px 0 10px; font-size: 13px; }
 .boards .label { color: var(--muted); margin-right: 2px; }
 .boards a { text-decoration: none; color: var(--text); background: var(--chip); border: 1px solid var(--border); border-radius: 14px; padding: 2px 10px; }
