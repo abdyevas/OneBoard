@@ -25,11 +25,13 @@ public final class VacancyDtos {
     public record VacancyDetails(Long id, String source, String externalId, String title, String company,
                                  String location, boolean remote, String employmentType, String salary,
                                  String description, String url, List<String> tags,
-                                 Instant publishedAt, Instant fetchedAt, ApplicationResponse application) {
+                                 Instant publishedAt, Instant fetchedAt, Instant deadlineAt,
+                                 boolean detailsPending, ApplicationResponse application) {
         static VacancyDetails of(Vacancy v, JobApplication application) {
             return new VacancyDetails(v.getId(), v.getSource(), v.getExternalId(), v.getTitle(), v.getCompany(),
                     v.getLocation(), v.isRemote(), v.getEmploymentType(), v.getSalary(), v.getDescription(),
-                    v.getUrl(), List.copyOf(v.getTags()), v.getPublishedAt(), v.getFetchedAt(),
+                    v.getUrl(), List.copyOf(v.getTags()), v.getPublishedAt(), v.getFetchedAt(), v.getDeadlineAt(),
+                    v.getDescription() == null,
                     application == null ? null : ApplicationResponse.of(application));
         }
     }

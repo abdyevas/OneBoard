@@ -84,7 +84,8 @@ public class JoobleSource implements VacancySource {
                         snippet,
                         j.link(),
                         List.of(),
-                        parseDate(j.updated())));
+                        parseDate(j.updated()),
+                        null));
             }
             if (resp.jobs().size() < props.resultsPerPage()) break;
         }

@@ -57,6 +57,9 @@ public class Vacancy {
     @Column(nullable = false)
     private Instant fetchedAt;
 
+    /** Application deadline, when the board publishes one. */
+    private Instant deadlineAt;
+
     protected Vacancy() {}
 
     public Vacancy(String source, String externalId) {
@@ -92,4 +95,6 @@ public class Vacancy {
     public void setPublishedAt(Instant publishedAt) { this.publishedAt = publishedAt; }
     public Instant getFetchedAt() { return fetchedAt; }
     public void setFetchedAt(Instant fetchedAt) { this.fetchedAt = fetchedAt; }
+    public Instant getDeadlineAt() { return deadlineAt; }
+    public void setDeadlineAt(Instant deadlineAt) { this.deadlineAt = deadlineAt; }
 }

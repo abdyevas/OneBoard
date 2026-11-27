@@ -31,22 +31,25 @@ $env:JOOBLE_API_KEY="..."; .\mvnw.cmd spring-boot:run
 
 ## Азербайджанские площадки
 
-Вакансии с сайтов копируются только там, где это разрешено. Проверка условий использования (ноябрь 2026):
+OneBoard собирает только азербайджанские вакансии. Условия сайтов проверены в ноябре 2026:
 
 | Площадка | Условия | Как подключено |
 |---|---|---|
-| hellojob.az, busy.az, boss.az, Glorri | прямо запрещают автоматический сбор данных | только кнопка-ссылка на поиск сайта |
-| jobsearch.az, smartjob.az | разрешения на использование нет | только кнопка-ссылка на поиск сайта |
+| jobsearch.az | условий использования нет; robots.txt API-хоста: `Crawl-delay: 30` | загружается напрямую: список по запросу, описания в фоне — не чаще 1 запроса в 30 с |
+| smartjob.az | условия не ограничивают; robots.txt закрывает только `/api/` | загружается напрямую: sitemap + данные `JobPosting` со страниц, 1 запрос в 2 с, только новые/обновлённые |
 | Jooble (az.jooble.org) | официальный партнёрский API | источник `jooble`, нужен `JOOBLE_API_KEY` |
+| hellojob.az, busy.az, boss.az, Glorri | прямо запрещают автоматический сбор данных | не загружаются; только кнопки, открывающие поиск на сайте |
 
-Чтобы загружать вакансии напрямую с площадки, нужно её письменное разрешение или официальный API.
+Каждая вакансия ведёт на оригинал. Если сайт изменит правила — источник нужно отключить.
+Для hellojob.az, busy.az, boss.az и Glorri загрузка возможна только с их письменного разрешения или через официальный API.
 
 ## Как устроено
 
 ```
 vacancy/            Vacancy (сущность), поиск, ручное добавление
-vacancy/source/     VacancySource — подключаемые источники вакансий (только Азербайджан: Jooble)
-aggregation/        загрузка из всех источников + upsert без дублей (source + externalId), опционально по cron
+vacancy/source/     VacancySource — источники (jobsearch.az, smartjob.az, Jooble); PoliteHttp — паузы между запросами к сайту
+aggregation/        фоновая загрузка из всех источников + upsert без дублей (source + externalId), опционально по cron;
+                    DetailEnricher — фоновая подгрузка полных описаний (открытые вакансии — первыми)
 cv/                 базовые CV: текст/Markdown, загрузка .pdf/.txt/.md
 adaptation/         SkillExtractor (словарь навыков, скоринг), CvAdapter: keyword | claude, история адаптаций
 ```
@@ -62,7 +65,9 @@ adaptation/         SkillExtractor (словарь навыков, скорин�
 | POST | `/api/vacancies` | добавить вакансию вручную |
 | GET | `/api/vacancies/stats` | количество по источникам |
 | GET | `/api/aggregation/sources` | список источников |
-| POST | `/api/aggregation/refresh` `{query, sources[]}` | загрузить свежие вакансии |
+| POST | `/api/aggregation/refresh` `{query, sources[]}` | запустить загрузку свежих вакансий (в фоне) |
+| GET | `/api/aggregation/status` | прогресс загрузки |
+| GET/PUT/DELETE | `/api/applications`, `/api/applications/{vacancyId}` | статус отклика на вакансию |
 | GET/POST/PUT/DELETE | `/api/cvs`, `/api/cvs/{id}` | CRUD для CV |
 | POST | `/api/cvs/upload` (multipart `file`, `title`) | CV из файла |
 | GET | `/api/cvs/{id}/matches?q=&limit=` | вакансии, лучше всего подходящие к CV |

@@ -35,7 +35,7 @@ class OneboardApplicationTests {
                 @Override public List<FetchedVacancy> fetch(String query) {
                     return List.of(new FetchedVacancy("1", "Senior Kotlin Engineer", "Acme", "Berlin", true,
                             "full_time", null, "Kotlin, Spring Boot, Kafka", "https://example.com/1",
-                            List.of("kotlin"), Instant.now()));
+                            List.of("kotlin"), Instant.now(), null));
                 }
             };
         }
@@ -97,7 +97,7 @@ class OneboardApplicationTests {
     @Test
     void purgesVacanciesOfRemovedSourcesButKeepsManualOnes() {
         vacancies.upsert("old-board", new FetchedVacancy("x1", "Old job", null, null, false, null, null,
-                "text", "https://example.com/x1", List.of("tag"), Instant.now()));
+                "text", "https://example.com/x1", List.of("tag"), Instant.now(), null));
         var manual = vacancies.createManual(new CreateVacancyRequest("Mine", null, null, false, null, "text", null, null));
 
         int removed = vacancies.purgeSourcesOtherThan(List.of("fake", "jooble"));

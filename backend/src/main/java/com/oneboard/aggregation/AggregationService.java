@@ -5,7 +5,11 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
+
+import jakarta.annotation.PreDestroy;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,7 +22,11 @@ import com.oneboard.vacancy.VacancyService;
 import com.oneboard.vacancy.source.FetchedVacancy;
 import com.oneboard.vacancy.source.VacancySource;
 
-/** Pulls vacancies from every registered {@link VacancySource} and upserts them into the DB. */
+/**
+ * Pulls vacancies from every registered {@link VacancySource} and upserts them into the DB.
+ * Sources wait between requests to honour each site's crawl delay, so a refresh can take a minute;
+ * it runs in the background and the UI polls {@link #status()}.
+ */
 @Service
 public class AggregationService {
 
@@ -28,6 +36,13 @@ public class AggregationService {
     private final VacancyService vacancies;
     private final AggregationProperties props;
     private final AtomicBoolean running = new AtomicBoolean(false);
+    private final ExecutorService executor = Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "aggregation");
+        t.setDaemon(true);
+        return t;
+    });
+
+    private volatile RefreshStatus lastStatus = RefreshStatus.idle();
 
     public AggregationService(List<VacancySource> sources, VacancyService vacancies, AggregationProperties props) {
         this.sources = sources;
@@ -35,43 +50,82 @@ public class AggregationService {
         this.props = props;
     }
 
-    public record SourceInfo(String id, String name, boolean enabled) {}
+    public record SourceInfo(String id, String name, boolean enabled, boolean supportsQuery) {}
 
     public record SourceResult(String source, int fetched, int created, int updated, long durationMs, String error) {}
 
     public record RefreshReport(String query, Instant startedAt, List<SourceResult> results) {}
 
-    public List<SourceInfo> sources() {
-        return sources.stream().map(s -> new SourceInfo(s.id(), s.displayName(), s.enabled())).toList();
+    /** Progress of the current (or last) background refresh. */
+    public record RefreshStatus(boolean running, String query, Instant startedAt, Instant finishedAt,
+                                String currentSource, List<SourceResult> results) {
+        static RefreshStatus idle() {
+            return new RefreshStatus(false, null, null, null, null, List.of());
+        }
     }
 
-    /**
-     * @param query     search text passed to each source (may be blank)
-     * @param sourceIds restrict to these sources; empty = all
-     */
+    public List<SourceInfo> sources() {
+        return sources.stream().map(s -> new SourceInfo(s.id(), s.displayName(), s.enabled(), s.supportsQuery())).toList();
+    }
+
+    public RefreshStatus status() {
+        return lastStatus;
+    }
+
+    /** Starts a refresh in the background; returns immediately with the initial status. */
+    public RefreshStatus start(String query, Set<String> sourceIds) {
+        if (!running.compareAndSet(false, true)) {
+            throw new IllegalStateException("A refresh is already running, try again later");
+        }
+        lastStatus = new RefreshStatus(true, query, Instant.now(), null, null, List.of());
+        try {
+            executor.submit(() -> {
+                try {
+                    runRefresh(query, sourceIds);
+                } catch (RuntimeException e) {
+                    log.error("Refresh failed", e);
+                } finally {
+                    running.set(false);
+                }
+            });
+        } catch (RuntimeException e) {
+            running.set(false);
+            throw e;
+        }
+        return lastStatus;
+    }
+
+    /** Synchronous refresh (used by the scheduler and tests). */
     public RefreshReport refresh(String query, Set<String> sourceIds) {
         if (!running.compareAndSet(false, true)) {
             throw new IllegalStateException("A refresh is already running, try again later");
         }
         try {
-            Instant started = Instant.now();
-            List<SourceResult> results = new ArrayList<>();
-            for (VacancySource source : sources) {
-                boolean requested = sourceIds.contains(source.id());
-                if (!sourceIds.isEmpty() && !requested) continue;
-                if (!source.enabled()) {
-                    // silently skip unconfigured sources in "refresh all"; explain when asked for explicitly
-                    if (requested) {
-                        results.add(new SourceResult(source.id(), 0, 0, 0, 0, "not configured (API key missing)"));
-                    }
-                    continue;
-                }
-                results.add(refreshOne(source, query));
-            }
-            return new RefreshReport(query, started, results);
+            return runRefresh(query, sourceIds);
         } finally {
             running.set(false);
         }
+    }
+
+    private RefreshReport runRefresh(String query, Set<String> sourceIds) {
+        Instant started = Instant.now();
+        List<SourceResult> results = new ArrayList<>();
+        lastStatus = new RefreshStatus(true, query, started, null, null, List.copyOf(results));
+        for (VacancySource source : sources) {
+            boolean requested = sourceIds.contains(source.id());
+            if (!sourceIds.isEmpty() && !requested) continue;
+            if (!source.enabled()) {
+                // silently skip unconfigured sources in "refresh all"; explain when asked for explicitly
+                if (requested) {
+                    results.add(new SourceResult(source.id(), 0, 0, 0, 0, "not configured (API key missing)"));
+                }
+                continue;
+            }
+            lastStatus = new RefreshStatus(true, query, started, null, source.id(), List.copyOf(results));
+            results.add(refreshOne(source, query));
+        }
+        lastStatus = new RefreshStatus(false, query, started, Instant.now(), null, List.copyOf(results));
+        return new RefreshReport(query, started, results);
     }
 
     private SourceResult refreshOne(VacancySource source, String query) {
@@ -111,5 +165,10 @@ public class AggregationService {
                 log.info("Skipping scheduled refresh: {}", busy.getMessage());
             }
         }
+    }
+
+    @PreDestroy
+    void shutdown() {
+        executor.shutdownNow();
     }
 }

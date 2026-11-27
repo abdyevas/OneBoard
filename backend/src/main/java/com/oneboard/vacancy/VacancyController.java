@@ -9,6 +9,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
+import com.oneboard.aggregation.DetailEnricher;
 import com.oneboard.application.JobApplicationService;
 import com.oneboard.common.PageResponse;
 import com.oneboard.vacancy.VacancyDtos.CreateVacancyRequest;
@@ -21,10 +22,12 @@ public class VacancyController {
 
     private final VacancyService service;
     private final JobApplicationService applications;
+    private final DetailEnricher enricher;
 
-    public VacancyController(VacancyService service, JobApplicationService applications) {
+    public VacancyController(VacancyService service, JobApplicationService applications, DetailEnricher enricher) {
         this.service = service;
         this.applications = applications;
+        this.enricher = enricher;
     }
 
     @GetMapping
@@ -47,7 +50,9 @@ public class VacancyController {
 
     @GetMapping("/{id}")
     public VacancyDetails get(@PathVariable Long id) {
-        return VacancyDetails.of(service.get(id), applications.forVacancy(id).orElse(null));
+        Vacancy v = service.get(id);
+        enricher.prioritize(v); // the user is looking at it: load its full text next
+        return VacancyDetails.of(v, applications.forVacancy(id).orElse(null));
     }
 
     @PostMapping

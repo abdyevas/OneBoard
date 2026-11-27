@@ -15,6 +15,9 @@ public interface VacancyRepository extends JpaRepository<Vacancy, Long> {
 
     List<Vacancy> findBySourceNotIn(java.util.Collection<String> sources);
 
+    Optional<Vacancy> findFirstBySourceAndDescriptionIsNullAndIdNotInOrderByPublishedAtDesc(
+            String source, java.util.Collection<Long> excludedIds);
+
     @Query("""
             select v from Vacancy v
             where (:q is null

@@ -58,21 +58,20 @@ async function loadSources() {
   }
 }
 
-// Azerbaijani job boards we are NOT allowed to copy listings from (their terms forbid automated
-// collection or grant no license). We only send the user to the board's own search.
+// Azerbaijani job boards whose terms forbid automated collection (hellojob.az, busy.az, boss.az,
+// Glorri). We don't load their listings — we only send the user to the board's own search.
+// jobsearch.az and smartjob.az are loaded directly (see backend sources).
 // `search` = URL template with the query prefilled; null = the board can't be prefilled by URL,
 // so we open its list and copy the query to the clipboard.
 const AZ_BOARDS = [
-  { name: 'jobsearch.az', list: 'https://jobsearch.az/vacancies', search: null },
   { name: 'boss.az', list: 'https://boss.az/search/vacancies', search: null },
   { name: 'hellojob.az', list: 'https://www.hellojob.az/vakansiyalar', search: 'https://www.hellojob.az/vakansiyalar?q={q}' },
   { name: 'Glorri', list: 'https://jobs.glorri.az/', search: 'https://jobs.glorri.az/?keyword={q}' },
   { name: 'busy.az', list: 'https://busy.az/vacancies', search: null },
-  { name: 'smartjob.az', list: 'https://smartjob.az/vakansiyalar', search: 'https://smartjob.az/vakansiyalar?q={q}' },
 ];
 
 function renderBoards() {
-  $('#v-boards').innerHTML = '<span class="label">Искать на сайтах:</span>' + AZ_BOARDS.map((b, i) =>
+  $('#v-boards').innerHTML = '<span class="label" title="Эти сайты запрещают автоматическую загрузку вакансий — открываем их поиск">Ещё искать на (вручную):</span>' + AZ_BOARDS.map((b, i) =>
     `<a href="${esc(b.list)}" target="_blank" rel="noopener" data-board="${i}"
         title="${b.search ? 'Откроет поиск на сайте с вашим запросом' : 'Откроет список вакансий; запрос будет скопирован — вставьте его в поиск сайта'}">${esc(b.name)} ↗</a>`).join('');
 }
@@ -114,8 +113,8 @@ async function searchVacancies(page = 0) {
     $('#v-list').innerHTML = data.items.map((v) => `
       <li data-id="${v.id}" data-title="${esc(v.title)}" class="${v.id === vState.selected ? 'selected' : ''}">
         <div class="title">${listTitle(v.title, v.applicationStatus)}</div>
-        <div class="meta">${esc(v.company || '—')} · ${esc(v.location || '')} ${v.remote ? '· remote' : ''}</div>
-        <div class="meta">${esc(v.source)} · ${fmtDate(v.publishedAt)} ${v.salary ? '· ' + esc(v.salary) : ''}</div>
+        <div class="meta">${esc([v.company || '—', v.location, v.remote ? 'remote' : null].filter(Boolean).join(' · '))}</div>
+        <div class="meta">${esc(v.source === 'manual' ? 'вручную' : sourceName(v.source))} · ${fmtDate(v.publishedAt)} ${v.salary ? '· ' + esc(v.salary) : ''}</div>
       </li>`).join('') || `<li class="muted">${emptyListHint()}</li>`;
     return true;
   } catch (e) {
@@ -132,7 +131,7 @@ function emptyListHint() {
   }
   if (sourcesInfo.length && !sourcesInfo.some((s) => s.enabled)) {
     return 'Вакансий пока нет: ни один источник не подключён. Подключите Jooble (нужен JOOBLE_API_KEY) '
-      + 'или добавьте вакансию вручную. Кнопки «Искать на сайтах» выше открывают поиск на азербайджанских площадках.';
+      + 'или добавьте вакансию вручную.';
   }
   return 'Вакансий пока нет. Нажмите «Обновить из источников», чтобы загрузить их.';
 }
@@ -157,16 +156,16 @@ async function showVacancy(id) {
   if (vState.selected !== id) return; // user already clicked another vacancy
   el.classList.remove('empty');
   el.scrollTop = 0;
-  const sourceName = sourcesInfo.find((s) => s.id === v.source)?.name
-    || (v.source === 'manual' ? 'добавлена вручную' : v.source);
+  const srcName = v.source === 'manual' ? 'добавлена вручную' : sourceName(v.source);
   const info = [
     ['Компания', v.company],
     ['Локация', v.location],
     ['Формат', v.remote ? 'Удалённо' : (v.location ? 'Офис / на месте' : null)],
     ['Занятость', v.employmentType],
-    ['Зарплата', v.salary || 'не указана'],
+    ['Зарплата', v.salary || (v.detailsPending ? null : 'не указана')],
     ['Опубликовано', v.publishedAt ? `${fmtDate(v.publishedAt)} (${ago(v.publishedAt)})` : null],
-    ['Источник', sourceName],
+    ['Подать до', v.deadlineAt ? `${fmtDate(v.deadlineAt)} (${untilDeadline(v.deadlineAt)})` : null],
+    ['Источник', srcName],
   ].filter(([, value]) => value);
 
   el.innerHTML = `
@@ -201,7 +200,9 @@ async function showVacancy(id) {
 
     <h3 class="section-title">Описание вакансии</h3>
     ${v.source === 'jooble' ? '<p class="muted small">Jooble передаёт только краткое описание — полный текст по кнопке «Откликнуться на сайте».</p>' : ''}
-    <div class="desc">${formatDescription(v.description)}</div>
+    <div class="desc">${v.detailsPending
+      ? `<p class="muted"><span class="spinner"></span> Загружаю полное описание с ${esc(srcName)}… Сайт разрешает один запрос в 30 секунд, поэтому это может занять до минуты. Страница обновится сама.</p>`
+      : formatDescription(v.description)}</div>
 
     <div class="detail-footer muted small">
       ID ${v.id}${v.url ? ` · <a href="${esc(v.url)}" target="_blank" rel="noopener">${esc(hostOf(v.url))}</a>` : ''}
@@ -224,8 +225,36 @@ async function showVacancy(id) {
     el.classList.add('empty'); el.textContent = 'Удалено';
     searchVacancies(vState.page);
   };
-  loadVacancyMatch(v.id);
+  if (v.detailsPending) {
+    $('#v-match').innerHTML = '<span class="muted small">Совпадение с CV посчитается, когда загрузится описание.</span>';
+    waitForDetails(v.id);
+  } else {
+    loadVacancyMatch(v.id);
+  }
   loadVacancyAdaptations(v.id);
+}
+
+/** Re-render the vacancy once the background worker has loaded its full text. */
+async function waitForDetails(id) {
+  for (let i = 0; i < 60; i++) { // up to ~4 minutes
+    await new Promise((r) => setTimeout(r, 4000));
+    if (vState.selected !== id) return;
+    try {
+      const v = await api('/vacancies/' + id);
+      if (!v.detailsPending) {
+        if (vState.selected === id) showVacancy(id);
+        return;
+      }
+    } catch { /* transient: keep waiting */ }
+  }
+}
+
+function untilDeadline(iso) {
+  const days = Math.ceil((new Date(iso) - Date.now()) / 86_400_000);
+  if (days < 0) return 'срок истёк';
+  if (days === 0) return 'сегодня последний день';
+  if (days === 1) return 'остался 1 день';
+  return `осталось ${days} дн.`;
 }
 
 const APP_STATUS = {
@@ -368,18 +397,38 @@ $('#v-query').addEventListener('keydown', (e) => { if (e.key === 'Enter') search
 $('#v-prev').onclick = () => searchVacancies(vState.page - 1);
 $('#v-next').onclick = () => searchVacancies(vState.page + 1);
 
+const sourceName = (id) => sourcesInfo.find((s) => s.id === id)?.name || id;
+
+// Sites ask us to wait between requests (jobsearch.az: 30 s), so a refresh runs in the background
+// and we poll its progress.
 $('#v-refresh').onclick = (e) => busy(e.target, async () => {
   const query = $('#v-query').value.trim();
-  setStatus($('#v-status'), `Загружаю вакансии${query ? ' по запросу «' + query + '»' : ''}…`);
   try {
-    const report = await api('/aggregation/refresh', { method: 'POST', json: { query } });
-    const lines = report.results.map((r) => r.error
-      ? `${r.source}: ошибка — ${r.error}`
-      : `${r.source}: получено ${r.fetched}, новых ${r.created}, обновлено ${r.updated} (${(r.durationMs / 1000).toFixed(1)} c)`);
+    let st = await api('/aggregation/refresh', { method: 'POST', json: { query } });
+    const started = Date.now();
+    while (st.running) {
+      const secs = Math.round((Date.now() - started) / 1000);
+      const done = st.results.map((r) => sourceName(r.source)).join(', ');
+      setStatus($('#v-status'),
+        `Загружаю вакансии${query ? ` по запросу «${query}»` : ''}… ${secs} c` +
+        (st.currentSource ? `\nСейчас: ${sourceName(st.currentSource)} (сайты просят делать паузы между запросами)` : '') +
+        (done ? `\nГотово: ${done}` : ''));
+      if (done) searchVacancies(0); // show what has arrived so far
+      await new Promise((r) => setTimeout(r, 2000));
+      st = await api('/aggregation/status');
+    }
+    const lines = st.results.map((r) => r.error
+      ? `${sourceName(r.source)}: ошибка — ${r.error}`
+      : `${sourceName(r.source)}: получено ${r.fetched}, новых ${r.created}, обновлено ${r.updated}` +
+        (sourcesInfo.find((s) => s.id === r.source)?.supportsQuery === false && query
+          ? ' (сайт не поддерживает поиск — загружены свежие вакансии, ищите в списке)' : ''));
     for (const s of sourcesInfo.filter((x) => !x.enabled)) {
       lines.push(`${s.name}: не подключён — нужен API-ключ (см. README)`);
     }
-    setStatus($('#v-status'), lines.join('\n'), report.results.some((r) => r.error));
+    if (st.results.some((r) => r.source === 'jobsearch' && !r.error && r.created)) {
+      lines.push('Описания с jobsearch.az подгружаются в фоне — по одной вакансии в 30 секунд (так требует сайт). Открытые вами вакансии загружаются первыми.');
+    }
+    setStatus($('#v-status'), lines.join('\n'), st.results.some((r) => r.error));
     searchVacancies(0);
   } catch (err) {
     setStatus($('#v-status'), err.message, true);

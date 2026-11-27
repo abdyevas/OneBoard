@@ -73,19 +73,46 @@ public class VacancyService {
     public boolean upsert(String source, FetchedVacancy f) {
         var existing = repository.findBySourceAndExternalId(source, f.externalId());
         Vacancy v = existing.orElseGet(() -> new Vacancy(source, f.externalId()));
-        v.setTitle(truncate(f.title(), 500));
-        v.setCompany(truncate(f.company(), 255));
-        v.setLocation(truncate(f.location(), 255));
-        v.setRemote(f.remote());
-        v.setEmploymentType(truncate(f.employmentType(), 100));
-        v.setSalary(truncate(f.salary(), 255));
-        v.setDescription(truncate(f.description(), 100_000));
-        v.setUrl(truncate(f.url(), 1000));
-        v.setTags(f.tags() == null ? null : f.tags().stream().map(t -> truncate(t, 100)).distinct().toList());
-        v.setPublishedAt(f.publishedAt());
-        v.setFetchedAt(Instant.now());
+        apply(v, f);
         repository.save(v);
         return existing.isEmpty();
+    }
+
+    /** Fill in the full details of a stored summary (from {@code VacancySource.fetchDetails}). */
+    @Transactional
+    public void completeDetails(Long id, FetchedVacancy f) {
+        repository.findById(id).ifPresent(v -> {
+            apply(v, f);
+            if (v.getDescription() == null) v.setDescription(""); // mark as done even if the board has no text
+        });
+    }
+
+    @Transactional(readOnly = true)
+    public java.util.Optional<Vacancy> nextWithoutDetails(String source, Collection<Long> excludedIds) {
+        // "NOT IN ()" is invalid SQL, so exclude an impossible id when the set is empty
+        Collection<Long> excluded = excludedIds.isEmpty() ? List.of(-1L) : excludedIds;
+        return repository.findFirstBySourceAndDescriptionIsNullAndIdNotInOrderByPublishedAtDesc(source, excluded);
+    }
+
+    /**
+     * Copies non-empty values only: a list refresh (summaries) must not wipe the description,
+     * deadline etc. that were loaded earlier from the details page.
+     */
+    private static void apply(Vacancy v, FetchedVacancy f) {
+        if (f.title() != null) v.setTitle(truncate(f.title(), 500));
+        if (f.company() != null) v.setCompany(truncate(f.company(), 255));
+        if (f.location() != null) v.setLocation(truncate(f.location(), 255));
+        v.setRemote(v.isRemote() || f.remote());
+        if (f.employmentType() != null) v.setEmploymentType(truncate(f.employmentType(), 100));
+        if (f.salary() != null) v.setSalary(truncate(f.salary(), 255));
+        if (f.description() != null) v.setDescription(truncate(f.description(), 100_000));
+        if (f.url() != null) v.setUrl(truncate(f.url(), 1000));
+        if (f.tags() != null && !f.tags().isEmpty()) {
+            v.setTags(f.tags().stream().filter(t -> t != null && !t.isBlank()).map(t -> truncate(t, 100)).distinct().toList());
+        }
+        if (f.publishedAt() != null) v.setPublishedAt(f.publishedAt());
+        if (f.deadline() != null) v.setDeadlineAt(f.deadline());
+        v.setFetchedAt(Instant.now());
     }
 
     /**
