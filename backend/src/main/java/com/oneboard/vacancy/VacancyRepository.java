@@ -13,6 +13,8 @@ public interface VacancyRepository extends JpaRepository<Vacancy, Long> {
 
     Optional<Vacancy> findBySourceAndExternalId(String source, String externalId);
 
+    List<Vacancy> findBySourceNotIn(java.util.Collection<String> sources);
+
     @Query("""
             select v from Vacancy v
             where (:q is null

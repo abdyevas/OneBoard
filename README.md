@@ -45,7 +45,7 @@ $env:JOOBLE_API_KEY="..."; .\mvnw.cmd spring-boot:run
 
 ```
 vacancy/            Vacancy (сущность), поиск, ручное добавление
-vacancy/source/     VacancySource — подключаемые job-борды (Remotive, Arbeitnow)
+vacancy/source/     VacancySource — подключаемые источники вакансий (только Азербайджан: Jooble)
 aggregation/        загрузка из всех источников + upsert без дублей (source + externalId), опционально по cron
 cv/                 базовые CV: текст/Markdown, загрузка .pdf/.txt/.md
 adaptation/         SkillExtractor (словарь навыков, скоринг), CvAdapter: keyword | claude, история адаптаций

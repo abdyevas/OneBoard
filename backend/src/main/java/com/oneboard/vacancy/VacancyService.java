@@ -1,7 +1,11 @@
 package com.oneboard.vacancy;
 
 import java.time.Instant;
+import java.util.Collection;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.UUID;
@@ -11,6 +15,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.oneboard.application.JobApplicationRepository;
 import com.oneboard.common.NotFoundException;
 import com.oneboard.vacancy.VacancyDtos.CreateVacancyRequest;
 import com.oneboard.vacancy.source.FetchedVacancy;
@@ -21,9 +26,11 @@ public class VacancyService {
     public static final String MANUAL_SOURCE = "manual";
 
     private final VacancyRepository repository;
+    private final JobApplicationRepository applications;
 
-    public VacancyService(VacancyRepository repository) {
+    public VacancyService(VacancyRepository repository, JobApplicationRepository applications) {
         this.repository = repository;
+        this.applications = applications;
     }
 
     @Transactional(readOnly = true)
@@ -79,6 +86,22 @@ public class VacancyService {
         v.setFetchedAt(Instant.now());
         repository.save(v);
         return existing.isEmpty();
+    }
+
+    /**
+     * Removes vacancies that came from sources which are no longer configured (e.g. a job board was
+     * dropped). Manually added vacancies are always kept. Returns how many were removed.
+     */
+    @Transactional
+    public int purgeSourcesOtherThan(Collection<String> activeSources) {
+        Set<String> keep = new HashSet<>(activeSources);
+        keep.add(MANUAL_SOURCE);
+        List<Vacancy> stale = repository.findBySourceNotIn(keep);
+        if (stale.isEmpty()) return 0;
+        List<Long> ids = stale.stream().map(Vacancy::getId).toList();
+        applications.deleteAll(applications.findByVacancyIdIn(ids));
+        repository.deleteAll(stale);
+        return stale.size();
     }
 
     @Transactional(readOnly = true)

@@ -9,6 +9,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
@@ -90,6 +92,13 @@ public class AggregationService {
             log.warn("Source {} failed: {}", source.id(), e.toString());
             return new SourceResult(source.id(), 0, 0, 0, ms, e.getClass().getSimpleName() + ": " + e.getMessage());
         }
+    }
+
+    /** Drop vacancies of job boards that were removed from the app (only Azerbaijani sources are kept). */
+    @EventListener(ApplicationReadyEvent.class)
+    void purgeRemovedSources() {
+        int removed = vacancies.purgeSourcesOtherThan(sources.stream().map(VacancySource::id).toList());
+        if (removed > 0) log.info("Removed {} vacancies from sources that are no longer configured", removed);
     }
 
     @Scheduled(cron = "${oneboard.aggregation.cron:0 0 */6 * * *}")

@@ -95,6 +95,19 @@ class OneboardApplicationTests {
     }
 
     @Test
+    void purgesVacanciesOfRemovedSourcesButKeepsManualOnes() {
+        vacancies.upsert("old-board", new FetchedVacancy("x1", "Old job", null, null, false, null, null,
+                "text", "https://example.com/x1", List.of("tag"), Instant.now()));
+        var manual = vacancies.createManual(new CreateVacancyRequest("Mine", null, null, false, null, "text", null, null));
+
+        int removed = vacancies.purgeSourcesOtherThan(List.of("fake", "jooble"));
+
+        assertEquals(1, removed);
+        assertNull(vacancies.stats().get("old-board"));
+        assertEquals(manual.getId(), vacancies.get(manual.getId()).getId());
+    }
+
+    @Test
     void claudeMethodFailsClearlyWithoutKey() {
         var cv = cvs.create("x", "Java");
         var vacancy = vacancies.createManual(new CreateVacancyRequest("Java", null, null, false, null, "Java", null, null));

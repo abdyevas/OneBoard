@@ -116,7 +116,7 @@ async function searchVacancies(page = 0) {
         <div class="title">${listTitle(v.title, v.applicationStatus)}</div>
         <div class="meta">${esc(v.company || '—')} · ${esc(v.location || '')} ${v.remote ? '· remote' : ''}</div>
         <div class="meta">${esc(v.source)} · ${fmtDate(v.publishedAt)} ${v.salary ? '· ' + esc(v.salary) : ''}</div>
-      </li>`).join('') || '<li class="muted">Ничего не найдено. Нажмите «Обновить из источников», чтобы загрузить вакансии.</li>';
+      </li>`).join('') || `<li class="muted">${emptyListHint()}</li>`;
     return true;
   } catch (e) {
     $('#v-list').innerHTML = `<li class="muted">Не удалось загрузить вакансии: ${esc(e.message)}
@@ -124,6 +124,17 @@ async function searchVacancies(page = 0) {
     $('#v-retry').onclick = () => searchVacancies(page);
     return false;
   }
+}
+
+function emptyListHint() {
+  if ($('#v-query').value.trim() || $('#v-source').value || $('#v-remote').checked) {
+    return 'Ничего не найдено по этим условиям.';
+  }
+  if (sourcesInfo.length && !sourcesInfo.some((s) => s.enabled)) {
+    return 'Вакансий пока нет: ни один источник не подключён. Подключите Jooble (нужен JOOBLE_API_KEY) '
+      + 'или добавьте вакансию вручную. Кнопки «Искать на сайтах» выше открывают поиск на азербайджанских площадках.';
+  }
+  return 'Вакансий пока нет. Нажмите «Обновить из источников», чтобы загрузить их.';
 }
 
 $('#v-list').addEventListener('click', (e) => {

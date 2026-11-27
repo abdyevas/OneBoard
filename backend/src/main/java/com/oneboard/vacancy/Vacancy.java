@@ -16,7 +16,7 @@ public class Vacancy {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    /** Source identifier, e.g. "remotive", "arbeitnow", "manual". */
+    /** Source identifier, e.g. "jooble", "manual". */
     @Column(nullable = false, length = 40)
     private String source;
 
