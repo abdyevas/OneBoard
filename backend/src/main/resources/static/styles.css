@@ -30,7 +30,7 @@ body { margin: 0; font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-seri
 nav { display: flex; gap: 4px; }
 .tab { background: none; color: var(--text); border: none; padding: 8px 14px; border-radius: 6px; cursor: pointer; }
 .tab.active { background: var(--chip); color: var(--accent); font-weight: 600; }
-main { padding: 16px 20px; max-width: 1400px; margin: 0 auto; }
+main { padding: 16px 20px; }
 .tab-panel { display: none; }
 .tab-panel.active { display: block; }
 .toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
@@ -55,7 +55,25 @@ label.check { flex-direction: row; align-items: center; gap: 6px; }
 .list .meta { color: var(--muted); font-size: 12px; }
 .detail { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 16px 20px; min-height: 200px; position: sticky; top: 70px; max-height: calc(100vh - 90px); overflow: auto; }
 .detail.empty { color: var(--muted); display: flex; align-items: center; justify-content: center; }
-.detail h2 { margin: 0 0 4px; }
+.detail h2 { margin: 0 0 4px; padding-right: 36px; }
+
+/* vacancy cards: full-width grid */
+.vac-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; flex-direction: unset; }
+.vac-grid li { display: flex; flex-direction: column; gap: 4px; padding: 14px 16px; transition: border-color .15s, transform .15s; }
+.vac-grid li:hover { transform: translateY(-1px); }
+.vac-grid li.muted { grid-column: 1 / -1; cursor: default; transform: none; }
+.vac-grid .title { font-size: 15px; line-height: 1.35; }
+.vac-grid .salary { font-weight: 600; color: var(--ok); font-size: 13px; }
+.vac-grid .meta.bottom { margin-top: auto; padding-top: 6px; }
+
+/* vacancy details pop-up */
+dialog.modal { width: min(920px, 96vw); max-height: 90vh; padding: 0; overflow: hidden; }
+dialog.modal[open] { display: flex; flex-direction: column; }
+dialog.modal .detail { position: static; border: none; border-radius: 0; max-height: 90vh; overflow: auto; min-height: 0; padding: 22px 26px; }
+.modal-close { position: absolute; top: 12px; right: 14px; z-index: 1; background: var(--chip); color: var(--text); border: 1px solid var(--border);
+  width: 32px; height: 32px; padding: 0; border-radius: 50%; font-size: 15px; line-height: 1; }
+.modal-close:hover { border-color: var(--accent); color: var(--accent); }
+body.modal-open { overflow: hidden; }
 .desc { white-space: pre-wrap; }
 .chips { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0; }
 .chip { background: var(--chip); border-radius: 10px; padding: 1px 8px; font-size: 12px; }

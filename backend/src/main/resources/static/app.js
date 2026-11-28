@@ -38,6 +38,8 @@ document.querySelectorAll('.tab').forEach((t) =>
   t.addEventListener('click', () => showTab(t.dataset.tab)));
 
 function showTab(name) {
+  const modal = document.getElementById('v-modal');
+  if (modal.open) modal.close(); // e.g. "Адаптировать CV" from inside the vacancy window
   document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === name));
   document.querySelectorAll('.tab-panel').forEach((p) => p.classList.toggle('active', p.id === 'tab-' + name));
   if (name === 'cvs') loadCvs();
@@ -111,10 +113,11 @@ async function searchVacancies(page = 0) {
     $('#v-prev').disabled = data.page <= 0;
     $('#v-next').disabled = data.page + 1 >= data.totalPages;
     $('#v-list').innerHTML = data.items.map((v) => `
-      <li data-id="${v.id}" data-title="${esc(v.title)}" class="${v.id === vState.selected ? 'selected' : ''}">
+      <li data-id="${v.id}" data-title="${esc(v.title)}" tabindex="0" role="button" aria-label="${esc(v.title)}">
         <div class="title">${listTitle(v.title, v.applicationStatus)}</div>
         <div class="meta">${esc([v.company || '—', v.location, v.remote ? 'remote' : null].filter(Boolean).join(' · '))}</div>
-        <div class="meta">${esc(v.source === 'manual' ? 'вручную' : sourceName(v.source))} · ${fmtDate(v.publishedAt)} ${v.salary ? '· ' + esc(v.salary) : ''}</div>
+        ${v.salary ? `<div class="salary">${esc(v.salary)}</div>` : ''}
+        <div class="meta bottom">${esc(v.source === 'manual' ? 'вручную' : sourceName(v.source))} · ${fmtDate(v.publishedAt)}</div>
       </li>`).join('') || `<li class="muted">${emptyListHint()}</li>`;
     return true;
   } catch (e) {
@@ -140,21 +143,55 @@ $('#v-list').addEventListener('click', (e) => {
   const li = e.target.closest('li[data-id]');
   if (li) showVacancy(Number(li.dataset.id));
 });
+$('#v-list').addEventListener('keydown', (e) => {
+  const li = e.target.closest('li[data-id]');
+  if (li && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); showVacancy(Number(li.dataset.id)); }
+});
+
+// ----- vacancy pop-up -----
+const vModal = $('#v-modal');
+let modalOpener = null; // card to return keyboard focus to
+
+function openVacancyModal() {
+  if (!vModal.open) {
+    modalOpener = document.activeElement;
+    vModal.showModal();
+    document.body.classList.add('modal-open');
+  }
+}
+
+function closeVacancyModal() {
+  if (vModal.open) vModal.close();
+}
+
+vModal.addEventListener('close', () => {
+  vState.selected = null; // stops background polling for this vacancy
+  document.body.classList.remove('modal-open');
+  if (modalOpener && document.contains(modalOpener)) modalOpener.focus();
+});
+$('#v-modal-close').onclick = closeVacancyModal;
+// click on the dimmed area around the window closes it
+vModal.addEventListener('click', (e) => {
+  if (e.target !== vModal) return;
+  const r = vModal.getBoundingClientRect();
+  if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) closeVacancyModal();
+});
 
 async function showVacancy(id) {
   vState.selected = id;
-  document.querySelectorAll('#v-list li').forEach((li) => li.classList.toggle('selected', Number(li.dataset.id) === id));
   const el = $('#v-detail');
+  if (!vModal.open) {
+    el.innerHTML = '<p class="muted"><span class="spinner"></span> Загружаю вакансию…</p>';
+    openVacancyModal();
+  }
   let v;
   try {
     v = await api('/vacancies/' + id);
   } catch (e) {
-    el.classList.remove('empty');
     el.innerHTML = `<p class="muted">Не удалось открыть вакансию: ${esc(e.message)}</p>`;
     return;
   }
-  if (vState.selected !== id) return; // user already clicked another vacancy
-  el.classList.remove('empty');
+  if (vState.selected !== id) return; // window was closed or another vacancy opened
   el.scrollTop = 0;
   const srcName = v.source === 'manual' ? 'добавлена вручную' : sourceName(v.source);
   const info = [
@@ -169,7 +206,7 @@ async function showVacancy(id) {
   ].filter(([, value]) => value);
 
   el.innerHTML = `
-    <h2>${esc(v.title)}</h2>
+    <h2 id="v-modal-title">${esc(v.title)}</h2>
     ${v.company ? `<div class="company">${esc(v.company)}</div>` : ''}
 
     <div class="apply-bar">
@@ -222,7 +259,7 @@ async function showVacancy(id) {
   if (del) del.onclick = async () => {
     if (!confirm('Удалить вакансию?')) return;
     await api('/vacancies/' + v.id, { method: 'DELETE' });
-    el.classList.add('empty'); el.textContent = 'Удалено';
+    closeVacancyModal();
     searchVacancies(vState.page);
   };
   if (v.detailsPending) {

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>OneBoard</title>
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles.css?v=2">
 </head>
 <body>
 <header class="topbar">
@@ -30,14 +30,15 @@
     </div>
     <div id="v-boards" class="boards"></div>
     <div id="v-status" class="status"></div>
-    <div class="split">
-      <div>
-        <ul id="v-list" class="list"></ul>
-        <div class="pager"><button id="v-prev">←</button><span id="v-page"></span><button id="v-next">→</button></div>
-      </div>
-      <article id="v-detail" class="detail empty">Выберите вакансию слева</article>
-    </div>
+    <ul id="v-list" class="list vac-grid"></ul>
+    <div class="pager"><button id="v-prev">←</button><span id="v-page"></span><button id="v-next">→</button></div>
   </section>
+
+  <!-- vacancy details pop-up -->
+  <dialog id="v-modal" class="modal" aria-labelledby="v-modal-title">
+    <button id="v-modal-close" class="modal-close" type="button" aria-label="Закрыть" title="Закрыть (Esc)">✕</button>
+    <article id="v-detail" class="detail"></article>
+  </dialog>
 
   <!-- ============ CVs ============ -->
   <section id="tab-cvs" class="tab-panel">
@@ -106,6 +107,6 @@
   </form>
 </dialog>
 
-<script src="app.js"></script>
+<script src="app.js?v=2"></script>
 </body>
 </html>
